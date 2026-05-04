@@ -25,7 +25,7 @@ if _version_not_supported:
     )
 
 
-class SolutionStreamerStub(object):
+class SolutionServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -34,43 +34,43 @@ class SolutionStreamerStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.StreamSolutions = channel.stream_unary(
-                '/optimizer.SolutionStreamer/StreamSolutions',
-                request_serializer=solution__pb2.SolutionUpdate.SerializeToString,
+        self.SendSolution = channel.unary_unary(
+                '/optimizer.SolutionService/SendSolution',
+                request_serializer=solution__pb2.Solution.SerializeToString,
                 response_deserializer=solution__pb2.Ack.FromString,
                 _registered_method=True)
 
 
-class SolutionStreamerServicer(object):
+class SolutionServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
-    def StreamSolutions(self, request_iterator, context):
+    def SendSolution(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
 
-def add_SolutionStreamerServicer_to_server(servicer, server):
+def add_SolutionServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'StreamSolutions': grpc.stream_unary_rpc_method_handler(
-                    servicer.StreamSolutions,
-                    request_deserializer=solution__pb2.SolutionUpdate.FromString,
+            'SendSolution': grpc.unary_unary_rpc_method_handler(
+                    servicer.SendSolution,
+                    request_deserializer=solution__pb2.Solution.FromString,
                     response_serializer=solution__pb2.Ack.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'optimizer.SolutionStreamer', rpc_method_handlers)
+            'optimizer.SolutionService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('optimizer.SolutionStreamer', rpc_method_handlers)
+    server.add_registered_method_handlers('optimizer.SolutionService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class SolutionStreamer(object):
+class SolutionService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
-    def StreamSolutions(request_iterator,
+    def SendSolution(request,
             target,
             options=(),
             channel_credentials=None,
@@ -80,11 +80,11 @@ class SolutionStreamer(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.stream_unary(
-            request_iterator,
+        return grpc.experimental.unary_unary(
+            request,
             target,
-            '/optimizer.SolutionStreamer/StreamSolutions',
-            solution__pb2.SolutionUpdate.SerializeToString,
+            '/optimizer.SolutionService/SendSolution',
+            solution__pb2.Solution.SerializeToString,
             solution__pb2.Ack.FromString,
             options,
             channel_credentials,
