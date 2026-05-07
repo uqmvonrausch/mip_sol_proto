@@ -15,6 +15,7 @@ message Solution {
   double objective_value = 2;
   bool feasible = 3;
   int64 timestamp = 4;
+  bool is_optimal = 5;
 }
 
 service SolutionService {
