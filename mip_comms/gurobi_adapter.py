@@ -1,4 +1,6 @@
+import itertools
 import queue
+import threading
 
 import gurobipy as gp
 
@@ -9,8 +11,13 @@ class GurobiAdapter:
     """Receives OR-Tools solutions and injects them into a live Gurobi solve.
 
     The server callback (on_solution_received) puts each received Solution on
-    an internal queue. A Gurobi MIPNODE callback drains the queue and injects
-    solutions via cbSetSolution / cbUseSolution.
+    an internal priority queue ordered by objective quality (best first).
+    A Gurobi MIPNODE callback drains the queue and injects solutions via
+    cbSetSolution / cbUseSolution.
+
+    When a solution arrives with is_optimal=True, a termination flag is set.
+    The Gurobi callback injects the optimal solution first, then calls
+    model.terminate() so the solution remains accessible in Gurobi.
 
     Usage::
 
@@ -28,32 +35,42 @@ class GurobiAdapter:
         self._model = model
         self._vars: list[gp.Var] = model.getVars()
         self._var_names: list[str] = [v.varName for v in self._vars]
-        self._pending: queue.Queue = queue.Queue()
+        # ModelSense is 1 (minimise) or -1 (maximise); captured once so
+        # on_solution_received can compute priority without holding the model lock.
+        self._model_sense: int = model.ModelSense
+        # PriorityQueue: items are (priority, counter, solution).
+        # priority = objective_value * model_sense → smaller value is better for
+        # both minimisation and maximisation, matching Python's min-heap ordering.
+        # counter breaks ties so Solution objects are never compared directly.
+        self._pending: queue.PriorityQueue = queue.PriorityQueue()
+        self._counter = itertools.count()
+        self._terminate_flag = threading.Event()
 
     def on_solution_received(self, solution) -> None:
         """gRPC server callback — thread-safe, returns immediately."""
+        priority = solution.objective_value * self._model_sense
+        self._pending.put((priority, next(self._counter), solution))
         print(f"[mip_comms] Received from OR-Tools: obj={solution.objective_value:.4f} (queued)")
-        self._pending.put(solution)
+        if solution.is_optimal:
+            self._terminate_flag.set()
 
     def make_injection_callback(self):
         """Return a Gurobi callback that injects pending OR-Tools solutions.
 
-        At each MIPNODE event the callback checks Gurobi's current incumbent
-        objective and only injects a solution if it is strictly better.
-        This lets Gurobi make independent progress — OR-Tools solutions only
-        redirect the search when they improve on what Gurobi has already found.
+        At each MIPNODE event the callback drains the priority queue in
+        best-first order, injecting only solutions that improve on Gurobi's
+        current incumbent.  After the queue is drained, if the termination
+        flag is set (OR-Tools proved optimality) model.terminate() is called
+        so the injected optimal solution remains accessible inside Gurobi.
 
-        model.ModelSense (1 = minimise, -1 = maximise) is captured once at
-        construction so the comparison works for both problem types.
-
-        Variables absent from the received solution are passed as GRB.UNDEFINED,
+        Variables absent from a received solution are passed as GRB.UNDEFINED,
         letting Gurobi determine those values itself.
         """
         vars_ = self._vars
         var_names = self._var_names
         pending = self._pending
-        # Capture once; ModelSense is 1 (minimise) or -1 (maximise).
-        model_sense = self._model.ModelSense
+        terminate_flag = self._terminate_flag
+        model_sense = self._model_sense
 
         def _callback(model, where):
             if where != gp.GRB.Callback.MIPNODE:
@@ -70,7 +87,7 @@ class GurobiAdapter:
 
             while not pending.empty():
                 try:
-                    solution = pending.get_nowait()
+                    _, _, solution = pending.get_nowait()
                 except queue.Empty:
                     break
 
@@ -96,5 +113,9 @@ class GurobiAdapter:
                     best_so_far = solution.objective_value
                 else:
                     print(f"[mip_comms] Warm-start rejected (solution infeasible for Gurobi)")
+
+            if terminate_flag.is_set():
+                print("[mip_comms] OR-Tools proved optimality — terminating Gurobi.")
+                model.terminate()
 
         return _callback
