@@ -62,6 +62,8 @@ print(f"[OR-Tools] Solving {N}-city TSP (streaming incumbents to localhost:50051
 with SolutionClient("localhost:50051") as client:
     cb = adapter.make_streaming_callback(client)
     status = solver.solve(CP, cb)
+    if status == cp_model.OPTIMAL:
+        adapter.send_optimal_solution(client, cb)
 
 print(f"[OR-Tools] Finished — status: {solver.status_name(status)}")
 if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
