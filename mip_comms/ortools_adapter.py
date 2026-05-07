@@ -22,12 +22,16 @@ class _StreamingCallback(cp_model.CpSolverSolutionCallback):
         super().__init__()
         self._var_map = var_map  # {canonical_name: IntVar}
         self._client = client
+        self._last_var_values: dict[str, float] = {}
+        self._last_obj: float = 0.0
 
     def on_solution_callback(self) -> None:
         var_values = {
             name: float(self.value(var))
             for name, var in self._var_map.items()
         }
+        self._last_var_values = var_values
+        self._last_obj = float(self.objective_value)
         solution = build_solution_proto(
             var_values=var_values,
             objective_value=self.objective_value,
@@ -78,3 +82,22 @@ class ORToolsAdapter:
     def make_streaming_callback(self, client) -> _StreamingCallback:
         """Return a CpSolverSolutionCallback that streams each incumbent."""
         return _StreamingCallback(self._var_map, client)
+
+    def send_optimal_solution(self, client, callback: _StreamingCallback) -> None:
+        """Resend the last incumbent with is_optimal=True after solver proves optimality.
+
+        Call this inside the SolutionClient context immediately after
+        solver.solve() returns cp_model.OPTIMAL::
+
+            cb = adapter.make_streaming_callback(client)
+            status = solver.solve(CP, cb)
+            if status == cp_model.OPTIMAL:
+                adapter.send_optimal_solution(client, cb)
+        """
+        signal = build_solution_proto(
+            var_values=callback._last_var_values,
+            objective_value=callback._last_obj,
+            feasible=True,
+            is_optimal=True,
+        )
+        client.send(signal)
