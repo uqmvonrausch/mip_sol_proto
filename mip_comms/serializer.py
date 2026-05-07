@@ -33,6 +33,7 @@ def build_solution_proto(
     var_values: dict[str, float],
     objective_value: float,
     feasible: bool,
+    is_optimal: bool = False,
 ) -> _pb2.Solution:
     """Build a Solution proto from a flat variable dict and scalar metadata."""
     return _pb2.Solution(
@@ -40,6 +41,7 @@ def build_solution_proto(
         objective_value=objective_value,
         feasible=feasible,
         timestamp=int(time.time()),
+        is_optimal=is_optimal,
     )
 
 
