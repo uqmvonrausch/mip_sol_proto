@@ -33,9 +33,9 @@ class SolutionServer:
             srv.wait_for_termination()
     """
 
-    def __init__(self, address: str, callback) -> None:
+    def __init__(self, address: str, callback, max_workers=1) -> None:
         self._server = grpc.server(
-            concurrent.futures.ThreadPoolExecutor(max_workers=2)
+            concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         )
         _grpc_pb2.add_SolutionServiceServicer_to_server(
             _SolutionServiceServicer(callback), self._server
